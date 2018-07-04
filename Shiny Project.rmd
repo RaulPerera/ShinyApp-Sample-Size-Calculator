@@ -1,0 +1,82 @@
+---
+title: "Shiny Project Pitch"
+author: "Raul Perera"
+date: "July 4, 2018"
+output: ioslides_presentation
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(plotly)
+library(Hmisc)
+library(tidyr)
+library(scales)
+```
+
+## Overview {.smaller}
+This shiny app uses several inputs in order to create a power graph to use in determining sample size for binomial test designs.
+
+* Type of Hypothesis Test
+    + The primary use case will be marketing A/B type tests in which case we are generally performing one-sided hypothesis testing.
+    + That is the default and not available for editing by the end user.  The choice to not make this a user input was deliberate in order to avoid confusion by end users, if this proves to be an issue it can easily be addressed in future versions.
+    
+Press down arrow to advance to next slide
+
+
+## Inputs and Ouputs {.smaller}
+* Inputs available to the user
+    + Expected probablity for the control or champion test cell
+    + Alpha level to use in determining power
+    + Sample size per group. This app requires the sample size for each test cell to be the same.  There are other power calculations that can address unequal sample size. However they would require a fixed proportion between n1 and n2 (given available plotting dimensions) which isn't the intent of this project.
+    + Lift over the control to read, the end user provides a range of values.  Within this range, 5 values evenly spaced across that range are plotted as different lines using the color dimension.
+* Output - The output of this input is an interactive plotly chart showing
+    + Power on the Y axis
+    + N/test call on the X axis
+    + 5 different lines on the chart each showing a different line value
+    + Typically users will be looking for an 80% power value. That should still be used as a benchmark but this chart allows the end user to explore the tradeoff across each of the input values
+
+```{r Simulation_setup, echo=FALSE, eval=TRUE}
+##Slightly modified server.r script in order to run outside of Shiny
+##User Inputs from UI.R - MODIFIED to use fixed values
+p1 <- 0.001
+alpha <- 0.05
+MinLift <- 0.05
+MaxLift <- 0.25
+MinN <- 50000
+MaxN <- 1000000
+```
+
+
+## Binomial Power Calculations {.smaller}
+```{r Simulation, echo=TRUE, eval=TRUE}
+##output$PowerPlot <- renderPlotly({ -- Commented out to work in non-shiny environment
+##Collection of user inputs from UI.R excluded to save space
+LiftIncrement <- (MaxLift - MinLift)/4
+NIncrement <- (MaxN - MinN)/200
+n  <- seq(MinN, MaxN, by = NIncrement)
+Lift  <- seq(MinLift, MaxLift, by = LiftIncrement)
+p2 <- (Lift + 1) * p1
+p2.len <- length(p2)
+n.len <- length(n)
+PowerArray <- array(numeric(n.len * p2.len), dim = c(n.len, p2.len))
+  for (i in 1:p2.len) {
+    for (j in 1:n.len) {
+      PowerTest <- power.prop.test(
+          n = n[j], p1 = p1,
+          p2 = p2[i], sig.level = alpha,
+          alternative = "one.sided")
+      PowerArray[j, i] <- PowerTest$power
+    } }
+  PowerDF <- as.data.frame(PowerArray)
+  names(PowerDF) <- Lift
+  PowerDF$n <- n
+  TidyPower <- gather(PowerDF, "lift", "power", -n)
+  PowerGGplot <- ggplot(data = TidyPower, aes(x = n, y = power, color = lift)) + 
+    geom_path() + scale_x_continuous(labels = comma) +  theme_bw()
+  Powerplot <- ggplotly(PowerGGplot)
+```
+
+## Plotly Graph
+```{r Plot, echo=TRUE,warnings=FALSE,comment=FALSE,message=FALSE, eval=TRUE}
+Powerplot
+```
+
